@@ -1,0 +1,7 @@
+# Tools
+.vscode/
+
+# .NET
+**/bin/
+**/obj/
+
