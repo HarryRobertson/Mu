@@ -1,17 +1,12 @@
 namespace Mu.Core;
 
-public delegate Task AsyncProduceEvent(IServiceProvider services, ChannelReader<MuProduced> produced, CancellationToken cancellationToken = default!);
-public delegate void ProduceEvent(IServiceProvider services, ChannelReader<MuProduced> produced);
-public delegate Task AsyncReceiveEvent(IServiceProvider services, ChannelWriter<MuReceived> received, CancellationToken cancellationToken = default!);
-public delegate void ReceiveEvent(IServiceProvider services, ChannelWriter<MuReceived> received);
-
 public sealed class MuApplication : IDisposable
 {
-    private IList<Func<MuContext, Func<Task>, Task>> handlers = new List<Func<MuContext, Func<Task>, Task>>();
-
     private bool running = false;
 
     public MuApplication(IServiceProvider services) => Services = services;
+
+    internal IList<Func<MuContext, Func<Task>, Task>> Handlers = new List<Func<MuContext, Func<Task>, Task>>();
 
     public static MuApplicationBuilder CreateBuilder(params string[] args) => new MuApplicationBuilder(args);
 
@@ -19,7 +14,7 @@ public sealed class MuApplication : IDisposable
 
     public MuApplication Use(Func<MuContext, Func<Task>, Task> handler)
     {
-        handlers.Add(handler);
+        Handlers.Add(handler);
         return this;
     }
 
@@ -30,35 +25,38 @@ public sealed class MuApplication : IDisposable
         var logger = Services.GetRequiredService<ILogger<MuApplication>>();
 
         logger.LogDebug("Building pipeline...");
-        var pipeline = handlers
+        var pipeline = Handlers
             .Reverse()
             .Aggregate((MuContext context) => Task.CompletedTask, 
                 (next, handler) => (MuContext context) => handler(context, () => next(context)));
 
-        logger.LogInformation("Starting receivers...");
-        var receivers = Services.GetServices<AsyncReceiveEvent>()
-            .Select(r => r(Services, Services.GetRequiredService<ChannelWriter<MuReceived>>(), cancellationToken))
+        logger.LogInformation("Starting Consumers...");
+        var consumedWriter = Services.GetRequiredService<ChannelWriter<Consumed>>();
+        var consumers = Services.GetServices<IConsumer>()
+            .Select(r => r.ConsumeAsync(consumedWriter, cancellationToken))
             .ToList();
+
         logger.LogInformation("Starting producers...");
-        var producers = Services.GetServices<AsyncProduceEvent>()
-            .Select(p => p(Services, Services.GetRequiredService<ChannelReader<MuProduced>>(), cancellationToken))
+        var producedReader = Services.GetRequiredService<ChannelReader<Produced>>();
+        var producers = Services.GetServices<IProducer>()
+            .Select(r => r.ProduceAsync(producedReader, cancellationToken))
             .ToList();
 
         logger.LogInformation("Starting host...");
-        var channelReader = Services.GetRequiredService<ChannelReader<MuReceived>>();
-        var channelWriter = Services.GetRequiredService<ChannelWriter<MuProduced>>();
+        var consumedReader = Services.GetRequiredService<ChannelReader<Consumed>>();
+        var producedWriter = Services.GetRequiredService<ChannelWriter<Produced>>();
         // var lifetime = Services.GetRequiredService<IHostApplicationLifetime>();
-        while (running && await channelReader.WaitToReadAsync(cancellationToken))
+        while (running && await consumedReader.WaitToReadAsync(cancellationToken))
         {
-            await foreach (var dequeued in channelReader.ReadAllAsync())
+            await foreach (var dequeued in consumedReader.ReadAllAsync())
             {
-                var context = new MuContext { ConsumedEvent = dequeued, ProducedEvent = new() };
+                var context = new MuContext { Consumed = dequeued.Inner, Produced = new() };
                 cancellationToken.ThrowIfCancellationRequested();
-                logger.LogJson(context.ConsumedEvent, LogLevel.Trace);
+                logger.LogJson(context.Consumed, LogLevel.Trace);
                 await pipeline(context);
-                logger.LogJson(context.ProducedEvent, LogLevel.Trace);
+                logger.LogJson(context.Produced, LogLevel.Trace);
                 cancellationToken.ThrowIfCancellationRequested();
-                await channelWriter.WriteAsync(context.ProducedEvent, cancellationToken);
+                await producedWriter.WriteAsync(new(context.Produced), cancellationToken);
             }
         }
     }

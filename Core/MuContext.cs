@@ -1,11 +1,7 @@
 namespace Mu.Core;
 
-public abstract class MuContext<TIn, TOut>
+public sealed class MuContext
 {
-    public TIn ConsumedEvent { get; init; } = default!;
-    public TOut ProducedEvent { get; init; } = default!;
-}
-
-public sealed class MuContext : MuContext<MuReceived, MuProduced>
-{
+    public object Consumed { get; init; } = default!;
+    public object Produced { get; set; } = default!;
 }

@@ -4,6 +4,7 @@ global using Microsoft.Extensions.DependencyInjection;
 
 global using Mu.Core;
 global using Mu.Core.Extensions;
+global using Mu.Demo;
 
 global using RabbitMQ.Client;
 global using RabbitMQ.Client.Events;

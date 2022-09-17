@@ -1,4 +1,4 @@
-namespace Mu;
+namespace Mu.Demo;
 
 public record class WeatherForecast
 {
@@ -9,4 +9,9 @@ public record class WeatherForecast
     public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
 
     public string? Summary { get; set; }
+}
+
+public record class WeatherRequest 
+{
+    public int Days { get; set; }
 }

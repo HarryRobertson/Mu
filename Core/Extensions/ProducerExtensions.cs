@@ -2,18 +2,21 @@ namespace Mu.Core.Extensions;
 
 public static class ProducerExtensions
 {
-    public static MuApplicationBuilder AddProducer(this MuApplicationBuilder builder, ProduceEvent produce)
+    public static MuApplicationBuilder AddProducer(this MuApplicationBuilder builder, Action<IServiceProvider, ChannelReader<Produced>> producer)
     {
         return builder.AddProducer((sp, r, ct) =>
         {
-            produce(sp, r);
+            producer(sp, r);
             return Task.CompletedTask;
         });
     }
 
-    public static MuApplicationBuilder AddProducer(this MuApplicationBuilder builder, AsyncProduceEvent produceAsync)
+    public static MuApplicationBuilder AddProducer(this MuApplicationBuilder builder, Func<IServiceProvider, ChannelReader<Produced>, CancellationToken, Task> produceAsync)
     {
-        builder.Services.AddSingleton(produceAsync);
+        builder.Services.AddSingleton<IProducer>(sp => new ConfigurableProducer(sp)
+        {
+            Producer = produceAsync,
+        });
         return builder;
     }
 }

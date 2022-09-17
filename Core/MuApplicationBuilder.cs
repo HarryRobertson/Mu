@@ -20,12 +20,12 @@ public sealed class MuApplicationBuilder
 
         Services = new ServiceCollection()
             .AddSingleton<IConfiguration>(_ => configurationBuilder.Build())
-            .AddSingleton(Channel.CreateUnbounded<MuReceived>())
-            .AddSingleton(p => p.GetRequiredService<Channel<MuReceived>>().Reader)
-            .AddSingleton(p => p.GetRequiredService<Channel<MuReceived>>().Writer)
-            .AddSingleton(Channel.CreateUnbounded<MuProduced>())
-            .AddSingleton(p => p.GetRequiredService<Channel<MuProduced>>().Reader)
-            .AddSingleton(p => p.GetRequiredService<Channel<MuProduced>>().Writer)
+            .AddSingleton(Channel.CreateUnbounded<Consumed>())
+            .AddSingleton(p => p.GetRequiredService<Channel<Consumed>>().Reader)
+            .AddSingleton(p => p.GetRequiredService<Channel<Consumed>>().Writer)
+            .AddSingleton(Channel.CreateUnbounded<Produced>())
+            .AddSingleton(p => p.GetRequiredService<Channel<Produced>>().Reader)
+            .AddSingleton(p => p.GetRequiredService<Channel<Produced>>().Writer)
             .AddLogging(logging => logging
                 .ClearProviders()
                 .AddConfiguration(configurationBuilder.Build().GetSection("Logging"))

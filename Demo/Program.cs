@@ -3,7 +3,7 @@ using System.Text.Json;
 
 var builder = MuApplication.CreateBuilder(args);
 
-builder.AddReceiver((sp, w) => 
+builder.AddConsumer((sp, w) => 
 {
     var channel = sp.GetRequiredService<IModel>();
     channel.QueueDeclare(queue: "foo", durable: false, exclusive: false, autoDelete: false, arguments: null);
@@ -11,13 +11,11 @@ builder.AddReceiver((sp, w) =>
     consumer.Received += (model, ea) => 
     {
         var body = ea.Body.ToArray();
-        var jwt = Encoding.UTF8.GetString(body);
-        var parts = jwt.Split('.');
-        var headers = JsonSerializer.Deserialize<IDictionary<string, string>>(parts[0])
-            ?? new Dictionary<string, string>();
-        var content = JsonSerializer.Deserialize<object>(parts[1]) ?? new();
-        var message = new MuReceived { Headers = headers, Content = content };
-        w.TryWrite(message);
+        var message = Encoding.UTF8.GetString(body);
+        if (JsonSerializer.Deserialize<WeatherRequest>(message) is {} temp)
+        {
+            w.TryWrite(new Consumed(temp));
+        }
     };
     channel.BasicConsume(queue: "foo", autoAck: true, consumer);
 });
@@ -32,10 +30,8 @@ builder.AddProducer(async (sp, r, ct) =>
         {
             await foreach (var read in r.ReadAllAsync(ct))
             {
-                var headers = JsonSerializer.Serialize(read.Headers);
-                var content = JsonSerializer.Serialize(read.Content);
-                var jwt = $"{headers}.{content}";
-                var body = Encoding.UTF8.GetBytes(jwt);
+                var content = JsonSerializer.Serialize(read.Inner);
+                var body = Encoding.UTF8.GetBytes(content);
                 channel.BasicPublish(exchange: "", routingKey: "bar", basicProperties: null, body);
             }
         }
@@ -46,17 +42,27 @@ builder.Services.AddSingleton<IConnectionFactory>(new ConnectionFactory { HostNa
 builder.Services.AddScoped(sp => sp.GetRequiredService<IConnectionFactory>().CreateConnection());
 builder.Services.AddScoped(sp => sp.GetRequiredService<IConnection>().CreateModel());
 
+string[] Summaries = new[]
+{
+    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
+};
+
 var app = builder.Build();
 
-app.Use((context, next) =>
+app.Map<WeatherRequest>(map =>
 {
-    // Console.WriteLine(context.ConsumedEvent.Content.ToString());
-    return next();
-})
-.Run(context => 
-{
-    context.ProducedEvent.Content = context.ConsumedEvent.Content;
-    return Task.CompletedTask;
+    map.Run(context => 
+    {
+        var request = (WeatherRequest)context.Consumed;
+        context.Produced = Enumerable.Range(1, request.Days).Select(index => new WeatherForecast
+        {
+            Date = DateTime.Now.AddDays(index),
+            TemperatureC = Random.Shared.Next(-20, 55),
+            Summary = Summaries[Random.Shared.Next(Summaries.Length)]
+        })
+        .ToArray();
+        return Task.CompletedTask;
+    });
 });
 
 await app.RunAsync();
