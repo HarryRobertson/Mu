@@ -1,4 +1,5 @@
 This is the demo for Mu (pronounced Moo), which is intended to act as an ASP-esque standard way of building event-driven microservices.
+The Core project and any ancilliary projects will eventually be published as Nuget packages.
 The aim is that you can just call a few boilerplate extension methods in Program.cs to set up the listeners and publishers.
 Then the developer just has to worry about writing the handlers for the messages, in the same middleware format as ASP.
 
