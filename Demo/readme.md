@@ -3,10 +3,10 @@ The aim is that you can just call a few boilerplate extension methods in Program
 Then the developer just has to worry about writing the handlers for the messages, in the same middleware format as ASP.
 
 You need to run RabbitMQ for this to work, I suggest Docker:
-docker run --hostname my-rabbit -p 8080:15672 -p 5672:5672 rabbitmq:3-management
+`docker run --hostname my-rabbit -p 8080:15672 -p 5672:5672 rabbitmq:3-management`
 
 Then you can connect to http://localhost:8080/#/queues/%2F/foo and add a WeatherRequest to the queue:
-{ "Days": 5 }
+`{ "Days": 5 }`
 
 If you F5 the Demo project it should then pick this up and run it through the pipeline.
 
