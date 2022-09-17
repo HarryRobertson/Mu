@@ -21,4 +21,4 @@ It's just a start, there's lots I want to add:
 
 Also, it obviously needs unit tests and some focus on performance
 
-When this is fairly stable I want to build a second repo (working title 'Muster') to manage distributed apps built using Mu
+When this is fairly stable I want to build a second repo (working title 'Muster') to manage distributed apps built using Mu - possibly using Orleans for the distribution aspect.
