@@ -15,13 +15,12 @@ The Demo project will then pick this up and run it through the pipeline.
 
 You should get a response on the other queue http://localhost:8080/#/queues/%2F/bar equivalent to the normal ASP demo WeatherForecast
 
-It's just a start, there's lots I want to add: 
-- there is currently no way to nack messages
+It's just a start, there's lots I want to add:
 - configurable serialisation (JWT as default to allow sending of headers, payload integrity validation, potential sender validation)
 - message Handlers a la Controllers, built in
 - Auth
-- standard consumers and producers for well used message buses
-- integration with ASP for consuming HTTP requests or producing webhooks
+- standard consumers and producers for `.well-known` message buses
+- integration with ASP for consuming HTTP requests or producing via websockets
 
 Also, it obviously needs unit tests and some focus on performance.
 
