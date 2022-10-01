@@ -1,13 +1,35 @@
+using System.Text.Json;
+
 namespace Mu.Core;
+
+public interface IMessageWriter
+{
+    Task WriteAsync<T>(string message, Func<bool, Task> completeMessage, CancellationToken cancellationToken = default);
+}
+
+internal class MessageWriter : IMessageWriter
+{
+    private readonly ChannelWriter<Consumed> consumedWriter;
+
+    public MessageWriter(ChannelWriter<Consumed> consumedWriter) => this.consumedWriter = consumedWriter;
+
+    public async Task WriteAsync<T>(string message, Func<bool, Task> completeMessage, CancellationToken cancellationToken = default)
+    {
+        if (JsonSerializer.Deserialize<T>(message) is { } temp)
+        {
+            await consumedWriter.WriteAsync(new(temp, completeMessage), cancellationToken);
+        }
+    }
+}
 
 public interface IConsumer
 {
-    Task ConsumeAsync(Func<object, Func<bool, Task>, CancellationToken, Task> writer, CancellationToken cancellationToken = default!);
+    Task ConsumeAsync(IMessageWriter writer, CancellationToken cancellationToken = default!);
 }
 
 public abstract class Consumer : IConsumer
 {
-    public abstract Task ConsumeAsync(Func<object, Func<bool, Task>, CancellationToken, Task> writer, CancellationToken cancellationToken = default!);
+    public abstract Task ConsumeAsync(IMessageWriter writer, CancellationToken cancellationToken = default!);
 }
 
 internal sealed class ConfigurableConsumer : Consumer
@@ -16,9 +38,9 @@ internal sealed class ConfigurableConsumer : Consumer
 
     public ConfigurableConsumer(IServiceProvider serviceProvider) => this.serviceProvider = serviceProvider;
 
-    public Func<IServiceProvider, Func<object, Func<bool, Task>, CancellationToken, Task>, CancellationToken, Task> Consumer { get; set; } = default!;
+    public Func<IServiceProvider, IMessageWriter, CancellationToken, Task> Consumer { get; set; } = default!;
 
-    public override Task ConsumeAsync(Func<object, Func<bool, Task>, CancellationToken, Task> writer, CancellationToken cancellationToken = default)
+    public override Task ConsumeAsync(IMessageWriter writer, CancellationToken cancellationToken = default)
         => Consumer?.Invoke(serviceProvider, writer, cancellationToken) 
         ?? throw new NullReferenceException($"No {nameof(Consumer)} was configured.");
 }

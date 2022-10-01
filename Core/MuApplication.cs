@@ -23,6 +23,7 @@ public sealed class MuApplication : IDisposable
         running = true;
 
         var logger = Services.GetRequiredService<ILogger<MuApplication>>();
+        logger.LogInformation($"MU_ENVIRONMENT={Environment.GetEnvironmentVariable("MU_ENVIRONMENT")}");
 
         logger.LogDebug("Building pipeline...");
         var pipeline = Handlers
@@ -31,25 +32,19 @@ public sealed class MuApplication : IDisposable
                 (next, handler) => (MuContext context) => handler(context, () => next(context)));
 
         logger.LogInformation("Starting consumers...");
-        var consumedWriter = Services.GetRequiredService<ChannelWriter<Consumed>>();
         var consumers = Services.GetServices<IConsumer>()
             .Select(r =>
             {
-                var writer = async (object c, Func<bool, Task> fc, CancellationToken ct) 
-                    => await consumedWriter.WriteAsync(new(c, fc), ct);
+                var writer = Services.CreateScope().ServiceProvider.GetRequiredService<IMessageWriter>();
                 return r.ConsumeAsync(writer, cancellationToken);
             })
             .ToList();
 
         logger.LogInformation("Starting producers...");
-        var producedReader = Services.GetRequiredService<ChannelReader<Produced>>();
         var producers = Services.GetServices<IProducer>()
             .Select(p =>
             {
-                var reader = async (CancellationToken ct) =>
-                    await producedReader.WaitToReadAsync(ct)
-                        ? await producedReader.ReadAsync(ct).AsTask().ContinueWith(t => t.Result.Inner)
-                        : null;
+                var reader = Services.CreateScope().ServiceProvider.GetRequiredService<IMessageReader>();
                 return p.ProduceAsync(reader, cancellationToken);
             })
             .ToList();

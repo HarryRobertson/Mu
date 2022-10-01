@@ -12,16 +12,16 @@ public sealed class MuApplicationBuilder
         configurationBuilder = new ConfigurationBuilder()
             .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
             .AddJsonFile($"appsettings.{environment}.json", optional: true, reloadOnChange: true)
-            .AddUserSecrets(Assembly.GetExecutingAssembly(), optional: true, reloadOnChange: true)
+            .AddUserSecrets(Assembly.GetEntryAssembly(), optional: true, reloadOnChange: true)
             .AddEnvironmentVariables("MU_")
             .AddCommandLine(args)
             .AddInMemoryCollection();
 
         Action<ILoggingBuilder> loggingBuilder = builder => builder
             .ClearProviders()
-                .AddConfiguration(configurationBuilder.Build().GetSection("Logging"))
-                .AddConsole()
-                .AddDebug();
+            .AddConfiguration(configurationBuilder.Build().GetSection("Logging"))
+            .AddConsole()
+            .AddDebug();
 
         Services = new ServiceCollection()
             .AddSingleton<IConfiguration>(_ => configurationBuilder.Build())
@@ -32,6 +32,8 @@ public sealed class MuApplicationBuilder
             .AddSingleton(Channel.CreateUnbounded<Produced>())
             .AddSingleton(p => p.GetRequiredService<Channel<Produced>>().Reader)
             .AddSingleton(p => p.GetRequiredService<Channel<Produced>>().Writer)
+            .AddSingleton<IMessageReader, MessageReader>()
+            .AddSingleton<IMessageWriter, MessageWriter>()
             .AddSingleton<MuApplication>();
     }
 
@@ -55,7 +57,5 @@ public sealed class MuApplicationBuilder
 
     public IServiceCollection Services { get; } = default!;
 
-    public MuApplication Build() 
-        => Services.BuildServiceProvider()
-        .GetRequiredService<MuApplication>();
+    public MuApplication Build() => Services.BuildServiceProvider().GetRequiredService<MuApplication>();
 }

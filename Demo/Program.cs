@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.Json;
 
 var builder = MuApplication.CreateBuilder(args);
 
@@ -22,25 +21,21 @@ builder.AddConsumer((sp, w, ct) =>
     {
         var body = ea.Body.ToArray();
         var message = Encoding.UTF8.GetString(body);
-        if (JsonSerializer.Deserialize<WeatherRequest>(message) is { } temp)
-        {
-            await w(temp, s => completeAsync(s, ea.DeliveryTag), ct);
-        }
+        await w.WriteAsync<WeatherRequest>(message, s => completeAsync(s, ea.DeliveryTag), ct);
     };
     
     channel.BasicConsume(queue: "foo", autoAck: false, consumer: consumer);
     return Task.CompletedTask;
 });
 
-builder.AddProducer(async (sp, r, ct) =>
+builder.AddProducer(async (sp, reader, ct) =>
 {
     var channel = sp.GetRequiredService<IModel>();
     channel.QueueDeclare(queue: "bar", durable: false, exclusive: false, autoDelete: false, arguments: null);
     while (!ct.IsCancellationRequested)
     {
-        var read = await r(ct);
-        var content = JsonSerializer.Serialize(read);
-        var body = Encoding.UTF8.GetBytes(content);
+        var read = await reader.ReadAsync(ct);
+        var body = Encoding.UTF8.GetBytes(read);
         channel.BasicPublish(exchange: "", routingKey: "bar", basicProperties: null, body);
     }
 });
@@ -49,7 +44,7 @@ builder.Services.AddSingleton<IConnectionFactory>(_ => new ConnectionFactory { H
 builder.Services.AddScoped(sp => sp.GetRequiredService<IConnectionFactory>().CreateConnection());
 builder.Services.AddScoped(sp => sp.GetRequiredService<IConnection>().CreateModel());
 
-string[] Summaries = new[]
+string[] Summaries = 
 {
     "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
 };
