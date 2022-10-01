@@ -18,7 +18,7 @@ public sealed class MuApplication : IDisposable
         return this;
     }
 
-    public async Task RunAsync(CancellationToken cancellationToken = default) 
+    public async Task RunAsync(CancellationToken cancellationToken = default)
     {
         running = true;
 
@@ -27,7 +27,7 @@ public sealed class MuApplication : IDisposable
         logger.LogDebug("Building pipeline...");
         var pipeline = Handlers
             .Reverse()
-            .Aggregate((MuContext context) => Task.CompletedTask, 
+            .Aggregate((MuContext context) => Task.CompletedTask,
                 (next, handler) => (MuContext context) => handler(context, () => next(context)));
 
         logger.LogInformation("Starting consumers...");
@@ -35,7 +35,8 @@ public sealed class MuApplication : IDisposable
         var consumers = Services.GetServices<IConsumer>()
             .Select(r =>
             {
-                var writer = async (object c, CancellationToken ct) => await consumedWriter.WriteAsync(new(c), ct);
+                var writer = async (object c, Func<bool, Task> fc, CancellationToken ct) 
+                    => await consumedWriter.WriteAsync(new(c, fc), ct);
                 return r.ConsumeAsync(writer, cancellationToken);
             })
             .ToList();
@@ -45,7 +46,7 @@ public sealed class MuApplication : IDisposable
         var producers = Services.GetServices<IProducer>()
             .Select(p =>
             {
-                var reader = async (CancellationToken ct) => 
+                var reader = async (CancellationToken ct) =>
                     await producedReader.WaitToReadAsync(ct)
                         ? await producedReader.ReadAsync(ct).AsTask().ContinueWith(t => t.Result.Inner)
                         : null;
@@ -56,18 +57,34 @@ public sealed class MuApplication : IDisposable
         logger.LogInformation("Starting host...");
         var consumedReader = Services.GetRequiredService<ChannelReader<Consumed>>();
         var producedWriter = Services.GetRequiredService<ChannelWriter<Produced>>();
-        // var lifetime = Services.GetRequiredService<IHostApplicationLifetime>();
-        while (running && await consumedReader.WaitToReadAsync(cancellationToken))
+
+        while (running && await consumedReader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            await foreach (var dequeued in consumedReader.ReadAllAsync())
+            await foreach (var dequeued in consumedReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
-                var context = new MuContext(dequeued.Inner);
-                cancellationToken.ThrowIfCancellationRequested();
-                logger.LogJson(context.Consumed, LogLevel.Trace);
-                await pipeline(context);
-                logger.LogJson(context.Produced, LogLevel.Trace);
-                cancellationToken.ThrowIfCancellationRequested();
-                await producedWriter.WriteAsync(new(context.Produced), cancellationToken);
+                try
+                {
+                    var context = new MuContext(dequeued.Inner);
+
+                    logger.LogJson(context.Consumed, LogLevel.Trace);
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await pipeline(context).ConfigureAwait(false);
+                    
+                    logger.LogJson(context.Produced, LogLevel.Trace);
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var success = context.Status is Status.Success;
+                    await dequeued.CompleteAsync(success).ConfigureAwait(false);
+                    if (success)
+                    {
+                        await producedWriter.WriteAsync(new(context.Produced), cancellationToken).ConfigureAwait(false);
+                    }
+                }
+                catch
+                {
+                    await dequeued.CompleteAsync(false).ConfigureAwait(false);
+                }
             }
         }
     }

@@ -3,25 +3,35 @@ using System.Text.Json;
 
 var builder = MuApplication.CreateBuilder(args);
 
-builder.AddConsumer((sp, w, ct) => 
+builder.AddConsumer((sp, w, ct) =>
 {
     var channel = sp.GetRequiredService<IModel>();
     channel.QueueDeclare(queue: "foo", durable: false, exclusive: false, autoDelete: false, arguments: null);
     var consumer = new EventingBasicConsumer(channel);
-    consumer.Received += async (_, ea) => 
+    
+    var completeAsync = (bool success, ulong tag) =>
+    {
+        if (success)
+            channel.BasicAck(tag, multiple: false);
+        else
+            channel.BasicReject(tag, requeue: true);
+        return Task.CompletedTask;
+    };
+
+    consumer.Received += async (_, ea) =>
     {
         var body = ea.Body.ToArray();
         var message = Encoding.UTF8.GetString(body);
-        if (JsonSerializer.Deserialize<WeatherRequest>(message) is {} temp)
+        if (JsonSerializer.Deserialize<WeatherRequest>(message) is { } temp)
         {
-            await w(temp, ct);
+            await w(temp, s => completeAsync(s, ea.DeliveryTag), ct);
         }
     };
-    channel.BasicConsume(queue: "foo", autoAck: true, consumer);
+    channel.BasicConsume(queue: "foo", autoAck: false, consumer: consumer);
     return Task.CompletedTask;
 });
 
-builder.AddProducer(async (sp, r, ct) => 
+builder.AddProducer(async (sp, r, ct) =>
 {
     var channel = sp.GetRequiredService<IModel>();
     channel.QueueDeclare(queue: "bar", durable: false, exclusive: false, autoDelete: false, arguments: null);
@@ -47,7 +57,7 @@ var app = builder.Build();
 
 app.Map<WeatherRequest>(map =>
 {
-    map.Run(context => 
+    map.Run(context =>
     {
         var request = (WeatherRequest)context.Consumed;
         context.Produced = Enumerable.Range(1, request.Days).Select(index => new WeatherForecast
