@@ -27,6 +27,7 @@ builder.AddConsumer((sp, w, ct) =>
             await w(temp, s => completeAsync(s, ea.DeliveryTag), ct);
         }
     };
+    
     channel.BasicConsume(queue: "foo", autoAck: false, consumer: consumer);
     return Task.CompletedTask;
 });
