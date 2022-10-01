@@ -30,16 +30,27 @@ public sealed class MuApplication : IDisposable
             .Aggregate((MuContext context) => Task.CompletedTask, 
                 (next, handler) => (MuContext context) => handler(context, () => next(context)));
 
-        logger.LogInformation("Starting Consumers...");
+        logger.LogInformation("Starting consumers...");
         var consumedWriter = Services.GetRequiredService<ChannelWriter<Consumed>>();
         var consumers = Services.GetServices<IConsumer>()
-            .Select(r => r.ConsumeAsync(consumedWriter, cancellationToken))
+            .Select(r =>
+            {
+                var writer = async (object c, CancellationToken ct) => await consumedWriter.WriteAsync(new(c), ct);
+                return r.ConsumeAsync(writer, cancellationToken);
+            })
             .ToList();
 
         logger.LogInformation("Starting producers...");
         var producedReader = Services.GetRequiredService<ChannelReader<Produced>>();
         var producers = Services.GetServices<IProducer>()
-            .Select(r => r.ProduceAsync(producedReader, cancellationToken))
+            .Select(p =>
+            {
+                var reader = async (CancellationToken ct) => 
+                    await producedReader.WaitToReadAsync(ct)
+                        ? await producedReader.ReadAsync(ct).AsTask().ContinueWith(t => t.Result.Inner)
+                        : null;
+                return p.ProduceAsync(reader, cancellationToken);
+            })
             .ToList();
 
         logger.LogInformation("Starting host...");
@@ -50,7 +61,7 @@ public sealed class MuApplication : IDisposable
         {
             await foreach (var dequeued in consumedReader.ReadAllAsync())
             {
-                var context = new MuContext { Consumed = dequeued.Inner, Produced = new() };
+                var context = new MuContext(dequeued.Inner);
                 cancellationToken.ThrowIfCancellationRequested();
                 logger.LogJson(context.Consumed, LogLevel.Trace);
                 await pipeline(context);
@@ -60,20 +71,6 @@ public sealed class MuApplication : IDisposable
             }
         }
     }
-
-    // public Task StartAsync(CancellationToken cancellationToken = default)
-    // {
-    //     cancellationToken.ThrowIfCancellationRequested();
-    //     RunAsync(cancellationToken);
-    //     return Task.CompletedTask;
-    // }
-
-    // public Task StopAsync(CancellationToken cancellationToken = default)
-    // { 
-    //     cancellationToken.ThrowIfCancellationRequested();
-    //     running = false;
-    //     return Task.CompletedTask;
-    // }
 
     public void Dispose() { }
 }

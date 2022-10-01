@@ -3,21 +3,22 @@ using System.Text.Json;
 
 var builder = MuApplication.CreateBuilder(args);
 
-builder.AddConsumer((sp, w) => 
+builder.AddConsumer((sp, w, ct) => 
 {
     var channel = sp.GetRequiredService<IModel>();
     channel.QueueDeclare(queue: "foo", durable: false, exclusive: false, autoDelete: false, arguments: null);
     var consumer = new EventingBasicConsumer(channel);
-    consumer.Received += (model, ea) => 
+    consumer.Received += async (_, ea) => 
     {
         var body = ea.Body.ToArray();
         var message = Encoding.UTF8.GetString(body);
         if (JsonSerializer.Deserialize<WeatherRequest>(message) is {} temp)
         {
-            w.TryWrite(new Consumed(temp));
+            await w(temp, ct);
         }
     };
     channel.BasicConsume(queue: "foo", autoAck: true, consumer);
+    return Task.CompletedTask;
 });
 
 builder.AddProducer(async (sp, r, ct) => 
@@ -26,19 +27,14 @@ builder.AddProducer(async (sp, r, ct) =>
     channel.QueueDeclare(queue: "bar", durable: false, exclusive: false, autoDelete: false, arguments: null);
     while (!ct.IsCancellationRequested)
     {
-        if (await r.WaitToReadAsync(ct))
-        {
-            await foreach (var read in r.ReadAllAsync(ct))
-            {
-                var content = JsonSerializer.Serialize(read.Inner);
-                var body = Encoding.UTF8.GetBytes(content);
-                channel.BasicPublish(exchange: "", routingKey: "bar", basicProperties: null, body);
-            }
-        }
+        var read = await r(ct);
+        var content = JsonSerializer.Serialize(read);
+        var body = Encoding.UTF8.GetBytes(content);
+        channel.BasicPublish(exchange: "", routingKey: "bar", basicProperties: null, body);
     }
 });
 
-builder.Services.AddSingleton<IConnectionFactory>(new ConnectionFactory { HostName = "localhost" });
+builder.Services.AddSingleton<IConnectionFactory>(_ => new ConnectionFactory { HostName = "localhost", Port = 5672 });
 builder.Services.AddScoped(sp => sp.GetRequiredService<IConnectionFactory>().CreateConnection());
 builder.Services.AddScoped(sp => sp.GetRequiredService<IConnection>().CreateModel());
 

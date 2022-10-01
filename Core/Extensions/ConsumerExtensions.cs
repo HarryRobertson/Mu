@@ -2,7 +2,7 @@ namespace Mu.Core.Extensions;
 
 public static class ConsumerExtensions
 {
-    public static MuApplicationBuilder AddConsumer(this MuApplicationBuilder builder, Action<IServiceProvider, ChannelWriter<Consumed>> Consume)
+    public static MuApplicationBuilder AddConsumer(this MuApplicationBuilder builder, Action<IServiceProvider, Func<object, CancellationToken, Task>> Consume)
     {   
         return builder.AddConsumer((sp, w, ct) =>
         {
@@ -11,7 +11,7 @@ public static class ConsumerExtensions
         });
     }
 
-    public static MuApplicationBuilder AddConsumer(this MuApplicationBuilder builder, Func<IServiceProvider, ChannelWriter<Consumed>, CancellationToken, Task> ConsumeAsync)
+    public static MuApplicationBuilder AddConsumer(this MuApplicationBuilder builder, Func<IServiceProvider, Func<object, CancellationToken, Task>, CancellationToken, Task> ConsumeAsync)
     {
         builder.Services.AddSingleton<IConsumer>(sp => new ConfigurableConsumer(sp)
         {
